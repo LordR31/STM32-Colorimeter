@@ -38,7 +38,7 @@
 // HC-05 Message Struct
 struct message{
 	uint8_t rgb[3];
-	int time;
+	int total_time;
 };
 
 /* USER CODE END PTD */
@@ -247,16 +247,17 @@ void read_colour_data(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *c){
 
 void normalize_colour_data(uint8_t *colours, uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *clear){
 	// Normalize to 0-255
-
 	if(*clear == 0){	// clear 0 => black
 		*(colours + 0) = 0;
 		*(colours + 1) = 0;
 		*(colours + 2) = 0;
+		return;
 	}
 
 	*(colours + 0) = *r * 255 / *clear;
 	*(colours + 1) = *g * 255 / *clear;
 	*(colours + 2) = *b * 255 / *clear;
+
 }
 
 /* USER CODE END 0 */
@@ -294,6 +295,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
+  if (!(CoreDebug->DEMCR & CoreDebug_DEMCR_TRCENA_Msk)) {
+	  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; // Enable the use of DWT
+  }
+  DWT->CYCCNT = 0; // Reset the cycle counter
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk; // Enable the cycle counter
 
   tcs34725_init_sensor();
   char *message = "Waiting command...";
@@ -689,16 +696,18 @@ void Task_dataReceive(void *argument)
   {
 	  if (xSemaphoreTake(binarySemHandle, portMAX_DELAY)){ //semaphore
 		  if(isToggled){
-			  uint32_t start_time = HAL_GetTick();
+			  int start_cycle = DWT->CYCCNT;
 			  read_colour_data(r, g, b, c);
 			  normalize_colour_data(colours, r, g, b, c);
-			  uint32_t end_time = HAL_GetTick();
+			  int end_cycle = DWT->CYCCNT;
+			  int total_cycles = end_cycle - start_cycle;
+			  int total_time = (total_cycles * 1000) / 180000000; // ms
 
 			  if(xSemaphoreTake(messageMutexHandle, portMAX_DELAY)){
 				  	  msg.rgb[0] = *(colours);
 				  	  msg.rgb[1] = *(colours + 1);
 				  	  msg.rgb[2] = *(colours + 2);
-				  	  msg.time = end_time - start_time;
+				  	  msg.total_time = total_time;
 				  	  xSemaphoreGive(messageMutexHandle);
 			  }
 		  }
@@ -736,6 +745,8 @@ void Task_dataSend_BLT(void *argument)
 			  char g_hex_str[3]; // Green in HEX as char
 			  char b_hex_str[3]; // Blue in HEX as char
 
+			  char total_time_str[16];
+
 			  if(xSemaphoreTake(messageMutexHandle, portMAX_DELAY)){
 				  // Convert int to char
 				  sprintf(r_str, "%d", msg.rgb[0]);
@@ -746,6 +757,9 @@ void Task_dataSend_BLT(void *argument)
 				  sprintf(r_hex_str, "%02X", msg.rgb[0]);
 				  sprintf(g_hex_str, "%02X", msg.rgb[1]);
 				  sprintf(b_hex_str, "%02X", msg.rgb[2]);
+
+				  sprintf(total_time_str, "%d", msg.total_time);
+
 				  xSemaphoreGive(messageMutexHandle);
 			  }
 
@@ -763,11 +777,8 @@ void Task_dataSend_BLT(void *argument)
 			  strcat(temp_msg, b_hex_str);
 			  strcat(temp_msg, " ");
 
-			  // Variable for time keeping
-			  char time_str[16];
-			  sprintf(time_str, "%d", msg.time);
 			  strcat(temp_msg, "Time taken: ");
-			  strcat(temp_msg, time_str);
+			  strcat(temp_msg, total_time_str);
 			  strcat(temp_msg, "ms\n");
 			  HAL_UART_Transmit(&huart1, (uint8_t*)temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
 		  }

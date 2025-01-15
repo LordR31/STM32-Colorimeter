@@ -80,18 +80,21 @@ def receive_data():
     global hex, text_label, time
     while True:
         data = sock.recv(64).decode('utf-8') # receive data
-        print(data)                          # print data
+        if data[0] == "!":
+            stop_print = data.find("!", 1)
+            print(data[1:stop_print])
 
-        hex_position = data.find(" #")       # find HEX
-        if hex_position != -1:
-            hex = data[hex_position + 1:hex_position + 8]
+        hex_pos = data.find("#")
+        if(hex_pos != -1):
+            hex = data[hex_pos:hex_pos + 7]
             window.after(100, update_color)  # window update
         
-        time_position = data.find("taken: ")
-        if time_position != -1:
-            time = data[time_position + 7:].strip()
-
-        window.after(100, update_text) # update text
+            time = data[hex_pos + 8:]
+            try:
+                time = int(time) / 180000
+            except:
+                continue 
+            window.after(100, update_text) # update text
 
 def update_color():
     global hex
@@ -105,7 +108,7 @@ def update_text():
 def window_control():
     global window, text_label, time
     window = Tk(className='STM32 Colour Window')
-    window.geometry('400x400')
+    window.geometry('400x300')
     
     button_on = Button(window, text="App ON", command=app_on)
     button_off = Button(window, text="App OFF", command=app_off)
@@ -135,8 +138,8 @@ def window_control():
     button_set_gain_x16.grid(row=2, column=2, padx=10, pady=10)
     button_set_gain_x60.grid(row=2, column=3, padx=10, pady=10)
 
-    text_label = Label(window, text=time, anchor="ne", justify=RIGHT)
-    text_label.grid(row=0, column=6, columnspan=2, sticky="ne")
+    text_label = Label(window, text=time, justify=LEFT)
+    text_label.grid(row=0, column=3, sticky="w")
 
     window.mainloop()
 

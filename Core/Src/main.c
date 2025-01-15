@@ -27,6 +27,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdlib.h>
 #include "math.h"
 #include "semphr.h"
 
@@ -37,8 +38,8 @@
 
 // HC-05 Message Struct
 struct message{
-	uint8_t rgb[3];
-	int total_time;
+	uint8_t *rgb;
+	int total_cycles;
 };
 
 /* USER CODE END PTD */
@@ -202,7 +203,7 @@ void tcs34725_integration_wait_time(int itime){
 	int wait_time = 0;
 	switch(itime){
 	case 255:
-		wait_time = 3;
+		wait_time = 2.4;
 		break;
 	case 246:
 		wait_time = 24;
@@ -217,7 +218,7 @@ void tcs34725_integration_wait_time(int itime){
 		wait_time = 700;
 		break;
 	}
-	HAL_Delay(wait_time);
+	osDelay(wait_time);
 }
 
 void tcs34725_update_config_itime(int itime){
@@ -235,6 +236,7 @@ void tcs34725_update_config_gain(int gain, int itime){
 
 void read_colour_data(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *c){
 	// Read colour from all registers
+
 	*r = tcs34725_i2c_read16(RDATAL);
 	*g = tcs34725_i2c_read16(GDATAL);
 	*b = tcs34725_i2c_read16(BDATAL);
@@ -245,19 +247,21 @@ void read_colour_data(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *c){
 	tcs34725_integration_wait_time(itime);
 }
 
-void normalize_colour_data(uint8_t *colours, uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *clear){
+uint8_t *normalize_colour_data(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *clear){
+	uint8_t *colours = (uint8_t*) malloc (3 * sizeof(uint8_t));
 	// Normalize to 0-255
 	if(*clear == 0){	// clear 0 => black
 		*(colours + 0) = 0;
 		*(colours + 1) = 0;
 		*(colours + 2) = 0;
-		return;
+		return colours;
 	}
 
 	*(colours + 0) = *r * 255 / *clear;
 	*(colours + 1) = *g * 255 / *clear;
 	*(colours + 2) = *b * 255 / *clear;
 
+	return colours;
 }
 
 /* USER CODE END 0 */
@@ -570,18 +574,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 
 	switch(buffer[0]){
 	case '0':
-		HAL_UART_Transmit(&huart1, (uint8_t *)"App OFF!\n", 10, HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart1, (uint8_t *)"!App OFF!\n", 10, HAL_MAX_DELAY);
 		isToggled = false;
 		break;
 	case '1':
-		HAL_UART_Transmit(&huart1, (uint8_t *)"App ON!\n", 9, HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart1, (uint8_t *)"!App ON!\n", 9, HAL_MAX_DELAY);
 		isToggled = true;
 		break;
 	case '2':
 		itime = 0xFF;
 		sprintf(str_itime, "0x%02X", itime);
 
-		strcpy(temp_msg, "Set integration time to ");
+		strcpy(temp_msg, "!Set integration time to ");
 		strcat(temp_msg, str_itime);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -591,7 +595,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		itime = 0xF6;
 		sprintf(str_itime, "0x%02X", itime);
 
-		strcpy(temp_msg, "Set integration time to ");
+		strcpy(temp_msg, "!Set integration time to ");
 		strcat(temp_msg, str_itime);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -601,7 +605,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		itime = 0xD5;
 		sprintf(str_itime, "0x%02X", itime);
 
-		strcpy(temp_msg, "Set integration time to ");
+		strcpy(temp_msg, "!Set integration time to ");
 		strcat(temp_msg, str_itime);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -611,7 +615,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		itime = 0xC0;
 		sprintf(str_itime, "0x%02X", itime);
 
-		strcpy(temp_msg, "Set integration time to ");
+		strcpy(temp_msg, "!Set integration time to ");
 		strcat(temp_msg, str_itime);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -621,7 +625,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		itime = 0x00;
 		sprintf(str_itime, "0x%02X", itime);
 
-		strcpy(temp_msg, "Set integration time to ");
+		strcpy(temp_msg, "!Set integration time to ");
 		strcat(temp_msg, str_itime);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -631,7 +635,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		gain = 0x00;
 		sprintf(str_gain, "0x%02X", gain);
 
-		strcpy(temp_msg, "Set gain to ");
+		strcpy(temp_msg, "!Set gain to ");
 		strcat(temp_msg, str_gain);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -641,7 +645,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		gain = 0x01;
 		sprintf(str_gain, "0x%02X", gain);
 
-		strcpy(temp_msg, "Set gain to ");
+		strcpy(temp_msg, "!Set gain to ");
 		strcat(temp_msg, str_gain);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -651,7 +655,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		gain = 0x10;
 		sprintf(str_gain, "0x%02X", gain);
 
-		strcpy(temp_msg, "Set gain to ");
+		strcpy(temp_msg, "!Set gain to ");
 		strcat(temp_msg, str_gain);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -661,7 +665,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		gain = 0x11;
 		sprintf(str_gain, "0x%02X", gain);
 
-		strcpy(temp_msg, "Set gain to ");
+		strcpy(temp_msg, "!Set gain to ");
 		strcat(temp_msg, str_gain);
 		strcat(temp_msg, "!\n");
 		HAL_UART_Transmit(&huart1, (uint8_t*) temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
@@ -688,30 +692,18 @@ void Task_dataReceive(void *argument)
 	uint16_t *g = (uint16_t*) malloc (sizeof(uint16_t));
 	uint16_t *b = (uint16_t*) malloc (sizeof(uint16_t));
 	uint16_t *c = (uint16_t*) malloc (sizeof(uint16_t));
-	uint8_t *colours = (uint8_t*) malloc (3 * sizeof(uint8_t));
-
-
+//	int start_cycle;
   /* Infinite loop */
-  for(;;)
-  {
-	  if (xSemaphoreTake(binarySemHandle, portMAX_DELAY)){ //semaphore
-		  if(isToggled){
-			  int start_cycle = DWT->CYCCNT;
-			  read_colour_data(r, g, b, c);
-			  normalize_colour_data(colours, r, g, b, c);
-			  int end_cycle = DWT->CYCCNT;
-			  int total_cycles = end_cycle - start_cycle;
-			  int total_time = (total_cycles * 1000) / 180000000; // ms
-
-			  if(xSemaphoreTake(messageMutexHandle, portMAX_DELAY)){
-				  	  msg.rgb[0] = *(colours);
-				  	  msg.rgb[1] = *(colours + 1);
-				  	  msg.rgb[2] = *(colours + 2);
-				  	  msg.total_time = total_time;
-				  	  xSemaphoreGive(messageMutexHandle);
-			  }
-		  }
-		  xSemaphoreGive(binarySemHandle);
+  for(;;){
+	if(isToggled){
+		int start_cycle = DWT->CYCCNT;						// timing start
+		if(xSemaphoreTake(messageMutexHandle, portMAX_DELAY)){
+			  read_colour_data(r, g, b, c);					// get color
+			  msg.rgb = normalize_colour_data(r, g, b, c);	// normalize and store
+			  int end_cycle = DWT->CYCCNT;					// timing end
+			  msg.total_cycles = end_cycle - start_cycle;	// store cycles taken
+			  xSemaphoreGive(messageMutexHandle);
+		}
 	  }
     osDelay(1);
   }
@@ -728,62 +720,49 @@ void Task_dataReceive(void *argument)
 void Task_dataSend_BLT(void *argument)
 {
   /* USER CODE BEGIN Task_dataSend_BLT */
-  /* Infinite loop */
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+	int cycles;
+
+	// Variables for the colour values detected
+	char r_hex_str[3]; // Red in HEX as char
+	char g_hex_str[3]; // Green in HEX as char
+	char b_hex_str[3]; // Blue in HEX as char
+	char cycles_str[16];
+
+	/* Infinite loop */
   for(;;)
   {
 	  if(isToggled){
-		  if (xSemaphoreTake(binarySemHandle, portMAX_DELAY)) {
 			  char temp_msg[64] = "";
 
 			  // Variables for the colour values detected
-			  char r_str[4]; // Red value as char
-			  char g_str[4]; // Green value as char
-			  char b_str[4]; // Blue value as char
-
-			  // Variables for the colour values detected
-			  char r_hex_str[3]; // Red in HEX as char
-			  char g_hex_str[3]; // Green in HEX as char
-			  char b_hex_str[3]; // Blue in HEX as char
-
-			  char total_time_str[16];
-
 			  if(xSemaphoreTake(messageMutexHandle, portMAX_DELAY)){
-				  // Convert int to char
-				  sprintf(r_str, "%d", msg.rgb[0]);
-				  sprintf(g_str, "%d", msg.rgb[1]);
-				  sprintf(b_str, "%d", msg.rgb[2]);
-
-				  // Convert values to hex and char
-				  sprintf(r_hex_str, "%02X", msg.rgb[0]);
-				  sprintf(g_hex_str, "%02X", msg.rgb[1]);
-				  sprintf(b_hex_str, "%02X", msg.rgb[2]);
-
-				  sprintf(total_time_str, "%d", msg.total_time);
-
-				  xSemaphoreGive(messageMutexHandle);
+					  r = msg.rgb[0]; // Red value
+					  g = msg.rgb[1]; // Green value
+					  b = msg.rgb[2]; // Blue value
+					  cycles = msg.total_cycles;
+			  	  xSemaphoreGive(messageMutexHandle);
 			  }
 
-			  strcpy(temp_msg, "R: ");
-			  strcat(temp_msg, r_str);
-			  strcat(temp_msg, " G: ");
-			  strcat(temp_msg, g_str);
-			  strcat(temp_msg, " B: ");
-			  strcat(temp_msg, b_str);
-			  strcat(temp_msg, " ");
+			  // Convert values to hex and char
+			  sprintf(r_hex_str, "%02X", r);
+			  sprintf(g_hex_str, "%02X", g);
+			  sprintf(b_hex_str, "%02X", b);
+			  sprintf(cycles_str, "%d", cycles);
 
-			  strcat(temp_msg, "HEX: #");
+			  // Crafts message
+			  strcpy(temp_msg, "#");
 			  strcat(temp_msg, r_hex_str);
 			  strcat(temp_msg, g_hex_str);
 			  strcat(temp_msg, b_hex_str);
 			  strcat(temp_msg, " ");
+			  strcat(temp_msg, cycles_str);
+			  strcat(temp_msg, "\n");
 
-			  strcat(temp_msg, "Time taken: ");
-			  strcat(temp_msg, total_time_str);
-			  strcat(temp_msg, "ms\n");
 			  HAL_UART_Transmit(&huart1, (uint8_t*)temp_msg, strlen(temp_msg), HAL_MAX_DELAY);
-		  }
-
-		  xSemaphoreGive(binarySemHandle);
+			  osDelay(4); // delay send message
 	  }
     osDelay(1);
   }

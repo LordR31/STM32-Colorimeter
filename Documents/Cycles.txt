@@ -1,0 +1,8 @@
+I2C Transfer: 24036 cicluri procesor
+Delay Timp Integrare (3ms): 620304 cicluri procesor
+Functie read (Masurat): 658391 cicluri procesor
+
+Functie normalize: 111 cicluri procesor
+
+Task data_receive: 831428 cicluri procesor
+		   516802 cicluri procesor!
